@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AI Secretary — Протоколы совещаний</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f7fa;
+      color: #1a1a2e;
+      min-height: 100vh;
+    }
+
+    header {
+      background: #16213e;
+      color: #fff;
+      padding: 1.25rem 2rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    header h1 { font-size: 1.4rem; font-weight: 600; }
+    header span { font-size: 1.5rem; }
+
+    main { max-width: 900px; margin: 2rem auto; padding: 0 1.5rem; }
+
+    /* Upload card */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      box-shadow: 0 2px 12px rgba(0,0,0,.08);
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+    .card h2 { font-size: 1.1rem; margin-bottom: 1.25rem; color: #16213e; }
+
+    .drop-zone {
+      border: 2px dashed #b0bec5;
+      border-radius: 10px;
+      padding: 2.5rem 1rem;
+      text-align: center;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+    .drop-zone:hover, .drop-zone.active {
+      border-color: #3f51b5;
+      background: #f0f2ff;
+    }
+    .drop-zone input[type="file"] { display: none; }
+    .drop-zone .icon { font-size: 2.5rem; display: block; margin-bottom: .5rem; }
+    .drop-zone .hint { color: #607d8b; font-size: .9rem; margin-top: .4rem; }
+    .drop-zone .selected-name {
+      margin-top: .75rem;
+      font-weight: 600;
+      color: #3f51b5;
+      font-size: .95rem;
+    }
+
+    .btn {
+      display: inline-block;
+      margin-top: 1.25rem;
+      padding: .65rem 2rem;
+      background: #3f51b5;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .btn:hover { background: #303f9f; }
+    .btn:disabled { background: #90a4ae; cursor: not-allowed; }
+
+    /* Progress */
+    #progress-wrap { margin-top: 1.25rem; display: none; }
+    .progress-bar-bg {
+      background: #e8eaf6;
+      border-radius: 999px;
+      height: 8px;
+      overflow: hidden;
+      margin-bottom: .5rem;
+    }
+    .progress-bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #3f51b5, #7986cb);
+      border-radius: 999px;
+      transition: width .4s ease;
+    }
+    #progress-label { font-size: .85rem; color: #607d8b; }
+
+    /* Result */
+    #result-wrap { display: none; }
+    .result-meta {
+      display: flex;
+      gap: .5rem;
+      align-items: center;
+      margin-bottom: 1rem;
+      flex-wrap: wrap;
+    }
+    .badge {
+      display: inline-block;
+      padding: .2rem .65rem;
+      border-radius: 999px;
+      font-size: .78rem;
+      font-weight: 600;
+    }
+    .badge-done { background: #e8f5e9; color: #2e7d32; }
+    .badge-error { background: #ffebee; color: #c62828; }
+
+    .protocol-text {
+      background: #fafafa;
+      border: 1px solid #e0e0e0;
+      border-radius: 8px;
+      padding: 1.25rem 1.5rem;
+      white-space: pre-wrap;
+      font-size: .92rem;
+      line-height: 1.65;
+      max-height: 520px;
+      overflow-y: auto;
+      font-family: inherit;
+    }
+
+    .copy-btn {
+      margin-top: .75rem;
+      padding: .4rem 1.1rem;
+      background: #fff;
+      border: 1.5px solid #3f51b5;
+      color: #3f51b5;
+      border-radius: 8px;
+      font-size: .88rem;
+      cursor: pointer;
+      transition: background .2s;
+    }
+    .copy-btn:hover { background: #e8eaf6; }
+
+    /* Protocols list */
+    #list-wrap { margin-top: .5rem; }
+    #list-wrap h2 { font-size: 1.1rem; margin-bottom: 1rem; color: #16213e; }
+    .meeting-item {
+      padding: .85rem 1rem;
+      border-radius: 8px;
+      border: 1px solid #e0e0e0;
+      margin-bottom: .6rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #fff;
+      cursor: pointer;
+      transition: border-color .2s;
+    }
+    .meeting-item:hover { border-color: #3f51b5; }
+    .meeting-item .meta { font-size: .82rem; color: #607d8b; margin-top: .2rem; }
+    .meeting-item .name { font-weight: 500; font-size: .95rem; }
+
+    #list-empty { color: #90a4ae; font-size: .92rem; }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,.45);
+      display: flex; align-items: center; justify-content: center;
+      z-index: 100;
+      padding: 1rem;
+    }
+    .modal {
+      background: #fff;
+      border-radius: 12px;
+      width: 100%; max-width: 760px;
+      max-height: 90vh;
+      display: flex; flex-direction: column;
+      box-shadow: 0 8px 32px rgba(0,0,0,.18);
+    }
+    .modal-header {
+      padding: 1.1rem 1.5rem;
+      border-bottom: 1px solid #eeeeee;
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h3 { font-size: 1rem; }
+    .modal-close { background: none; border: none; font-size: 1.4rem; cursor: pointer; color: #607d8b; }
+    .modal-body {
+      padding: 1.25rem 1.5rem;
+      overflow-y: auto;
+      flex: 1;
+    }
+    .modal-body pre {
+      white-space: pre-wrap;
+      font-family: inherit;
+      font-size: .9rem;
+      line-height: 1.65;
+    }
+    .modal-body .section-label {
+      font-size: .78rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .05em;
+      color: #607d8b;
+      margin: 1.25rem 0 .4rem;
+    }
+
+    .hidden { display: none !important; }
+  </style>
+</head>
+<body>
+  <header>
+    <span>📋</span>
+    <h1>AI Secretary</h1>
+  </header>
+
+  <main>
+    <!-- Upload -->
+    <div class="card">
+      <h2>Загрузить запись совещания</h2>
+      <form id="upload-form">
+        <div class="drop-zone" id="drop-zone">
+          <input type="file" id="file-input" accept=".mp3,.wav,.m4a,.ogg,.flac,.webm" />
+          <span class="icon">🎙️</span>
+          <div>Перетащите аудиофайл сюда или <strong>нажмите для выбора</strong></div>
+          <div class="hint">mp3 · wav · m4a · ogg · flac · webm</div>
+          <div class="selected-name hidden" id="selected-name"></div>
+        </div>
+
+        <button type="submit" class="btn" id="submit-btn" disabled>Обработать</button>
+      </form>
+
+      <div id="progress-wrap">
+        <div class="progress-bar-bg">
+          <div class="progress-bar-fill" id="progress-bar" style="width:0%"></div>
+        </div>
+        <div id="progress-label">Подготовка…</div>
+      </div>
+
+      <div id="result-wrap" class="card" style="margin-top:1.5rem;margin-bottom:0">
+        <div class="result-meta">
+          <span id="result-badge" class="badge badge-done">Готово</span>
+          <span id="result-filename" style="font-weight:500"></span>
+        </div>
+        <div class="protocol-text" id="protocol-text"></div>
+        <button class="copy-btn" id="copy-btn">Скопировать протокол</button>
+      </div>
+    </div>
+
+    <!-- List -->
+    <div class="card" id="list-wrap">
+      <h2>История протоколов</h2>
+      <div id="list-container">
+        <div id="list-empty">Загрузка…</div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Modal -->
+  <div class="modal-overlay hidden" id="modal-overlay">
+    <div class="modal">
+      <div class="modal-header">
+        <h3 id="modal-title">Протокол</h3>
+        <button class="modal-close" id="modal-close">×</button>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+<script>
+const dropZone = document.getElementById('drop-zone');
+const fileInput = document.getElementById('file-input');
+const submitBtn = document.getElementById('submit-btn');
+const selectedName = document.getElementById('selected-name');
+const progressWrap = document.getElementById('progress-wrap');
+const progressBar = document.getElementById('progress-bar');
+const progressLabel = document.getElementById('progress-label');
+const resultWrap = document.getElementById('result-wrap');
+const protocolText = document.getElementById('protocol-text');
+const resultBadge = document.getElementById('result-badge');
+const resultFilename = document.getElementById('result-filename');
+const copyBtn = document.getElementById('copy-btn');
+const listContainer = document.getElementById('list-container');
+const listEmpty = document.getElementById('list-empty');
+const modalOverlay = document.getElementById('modal-overlay');
+const modalTitle = document.getElementById('modal-title');
+const modalBody = document.getElementById('modal-body');
+const modalClose = document.getElementById('modal-close');
+
+let selectedFile = null;
+
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('active'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('active'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('active');
+  const f = e.dataTransfer.files[0];
+  if (f) setFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) setFile(fileInput.files[0]);
+});
+
+function setFile(f) {
+  selectedFile = f;
+  selectedName.textContent = f.name;
+  selectedName.classList.remove('hidden');
+  submitBtn.disabled = false;
+}
+
+const STAGES = [
+  { label: 'Загрузка файла…', pct: 15 },
+  { label: 'Транскрипция аудио (WhisperX)…', pct: 55 },
+  { label: 'Генерация протокола (Claude)…', pct: 85 },
+  { label: 'Сохранение…', pct: 95 },
+];
+
+document.getElementById('upload-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  if (!selectedFile) return;
+
+  submitBtn.disabled = true;
+  resultWrap.style.display = 'none';
+  progressWrap.style.display = 'block';
+
+  let stageIdx = 0;
+  setStage(stageIdx);
+
+  const stageTimer = setInterval(() => {
+    stageIdx = Math.min(stageIdx + 1, STAGES.length - 1);
+    setStage(stageIdx);
+  }, 4000);
+
+  try {
+    const fd = new FormData();
+    fd.append('file', selectedFile);
+    const resp = await fetch('/upload', { method: 'POST', body: fd });
+    clearInterval(stageTimer);
+
+    progressBar.style.width = '100%';
+    progressLabel.textContent = 'Готово!';
+
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+      showError(err.detail || 'Ошибка сервера');
+      return;
+    }
+    const data = await resp.json();
+    showResult(data);
+    loadList();
+  } catch (err) {
+    clearInterval(stageTimer);
+    showError(String(err));
+  }
+});
+
+function setStage(idx) {
+  const s = STAGES[idx];
+  progressBar.style.width = s.pct + '%';
+  progressLabel.textContent = s.label;
+}
+
+function showResult(data) {
+  progressWrap.style.display = 'none';
+  resultWrap.style.display = 'block';
+  resultFilename.textContent = data.filename;
+  if (data.status === 'done') {
+    resultBadge.textContent = 'Готово';
+    resultBadge.className = 'badge badge-done';
+    protocolText.textContent = data.protocol || '(пустой протокол)';
+  } else {
+    resultBadge.textContent = 'Ошибка';
+    resultBadge.className = 'badge badge-error';
+    protocolText.textContent = data.error_message || 'Неизвестная ошибка';
+  }
+}
+
+function showError(msg) {
+  progressWrap.style.display = 'none';
+  resultWrap.style.display = 'block';
+  resultBadge.textContent = 'Ошибка';
+  resultBadge.className = 'badge badge-error';
+  resultFilename.textContent = '';
+  protocolText.textContent = msg;
+  submitBtn.disabled = false;
+}
+
+copyBtn.addEventListener('click', () => {
+  navigator.clipboard.writeText(protocolText.textContent).then(() => {
+    copyBtn.textContent = 'Скопировано!';
+    setTimeout(() => { copyBtn.textContent = 'Скопировать протокол'; }, 2000);
+  });
+});
+
+async function loadList() {
+  try {
+    const resp = await fetch('/protocols');
+    const items = await resp.json();
+    if (!items.length) {
+      listContainer.innerHTML = '<div id="list-empty">Протоколов пока нет</div>';
+      return;
+    }
+    listContainer.innerHTML = '';
+    items.forEach(m => {
+      const el = document.createElement('div');
+      el.className = 'meeting-item';
+      const statusEmoji = m.status === 'done' ? '✅' : m.status === 'error' ? '❌' : '⏳';
+      el.innerHTML = `
+        <div>
+          <div class="name">${statusEmoji} ${escHtml(m.filename)}</div>
+          <div class="meta">${new Date(m.created_at).toLocaleString('ru-RU')}</div>
+        </div>
+        <div class="meta">${m.status}</div>
+      `;
+      if (m.status === 'done') {
+        el.addEventListener('click', () => openModal(m.id, m.filename));
+      }
+      listContainer.appendChild(el);
+    });
+  } catch {
+    listContainer.innerHTML = '<div id="list-empty">Не удалось загрузить список</div>';
+  }
+}
+
+async function openModal(id, filename) {
+  modalTitle.textContent = filename;
+  modalBody.innerHTML = '<p style="color:#607d8b">Загрузка…</p>';
+  modalOverlay.classList.remove('hidden');
+  try {
+    const resp = await fetch(`/protocols/${id}`);
+    const data = await resp.json();
+    modalBody.innerHTML = '';
+
+    if (data.protocol) {
+      const label = document.createElement('div');
+      label.className = 'section-label';
+      label.textContent = 'Протокол';
+      const pre = document.createElement('pre');
+      pre.textContent = data.protocol;
+      modalBody.appendChild(label);
+      modalBody.appendChild(pre);
+    }
+
+    if (data.transcript) {
+      const label = document.createElement('div');
+      label.className = 'section-label';
+      label.textContent = 'Транскрипт';
+      const pre = document.createElement('pre');
+      pre.textContent = data.transcript;
+      modalBody.appendChild(label);
+      modalBody.appendChild(pre);
+    }
+  } catch {
+    modalBody.innerHTML = '<p style="color:#c62828">Не удалось загрузить протокол</p>';
+  }
+}
+
+modalClose.addEventListener('click', () => modalOverlay.classList.add('hidden'));
+modalOverlay.addEventListener('click', e => {
+  if (e.target === modalOverlay) modalOverlay.classList.add('hidden');
+});
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+loadList();
+</script>
+</body>
+</html>
