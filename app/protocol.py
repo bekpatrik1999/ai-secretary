@@ -1,6 +1,6 @@
 import logging
 
-import anthropic
+import httpx
 
 from app.config import settings
 
@@ -69,21 +69,28 @@ def _split_transcript(transcript: str, chunk_size: int = CHUNK_SIZE) -> list[str
     return chunks
 
 
-def _chat(client: anthropic.Anthropic, system: str, user: str) -> str:
-    message = client.messages.create(
-        model=settings.anthropic_model,
-        max_tokens=2048,
-        system=system,
-        messages=[{"role": "user", "content": user}],
+def _chat(client: httpx.Client, system: str, user: str) -> str:
+    response = client.post(
+        "/api/chat",
+        json={
+            "model": settings.ollama_model,
+            "stream": False,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user},
+            ],
+            "options": {"num_predict": 2048},
+        },
     )
-    return message.content[0].text
+    response.raise_for_status()
+    return response.json()["message"]["content"]
 
 
 def generate_protocol(transcript: str) -> str:
-    client = anthropic.Anthropic(api_key=settings.anthropic_api_key)
+    client = httpx.Client(base_url=settings.ollama_url, timeout=600.0)
     logger.info(
-        "Generating protocol via Anthropic/%s, transcript length: %d chars",
-        settings.anthropic_model,
+        "Generating protocol via Ollama/%s, transcript length: %d chars",
+        settings.ollama_model,
         len(transcript),
     )
 

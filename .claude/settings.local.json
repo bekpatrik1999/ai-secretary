@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(chmod +x /Users/bekayusupov/ai-secretary/run.sh)",
-      "Bash(python3 *)"
-    ]
-  }
-}
